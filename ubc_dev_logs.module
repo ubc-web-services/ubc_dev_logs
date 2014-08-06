@@ -1,0 +1,101 @@
+<?php
+
+/**
+ * Log the data
+ */
+function ubc_dev_logs_logTransaction($mod, $data, $type, $file=1) {
+
+	$method = $mod.'_getLogVars';
+  $VARS = $method();
+
+  $log_path = ubc_dev_logs_get_log_path($mod);
+  $log = ubc_dev_logs_request_to_log($data, $type);
+  
+  if(!is_dir($log_path)) {
+    ubc_dev_logs_create_log_dir($log_path);
+
+    $delete_dir = ubc_dev_logs_get_delete_log_path($mod, $VARS['UBC_DEV_LOGS_LOG_DELETE_PERIOD']);
+    ubc_dev_logs_logTransaction($mod, $delete_dir, '******LOG DELETE');
+    ubc_dev_logs_delete_dir($delete_dir);
+  } 
+
+  $files = unserialize($VARS['UBC_DEV_LOGS_FILES']);
+  file_put_contents($log_path.'/'.$files[$file], $log, FILE_APPEND);
+
+}
+
+/**
+ * Get today's log path.
+ */
+function ubc_dev_logs_get_log_path($mod) {
+
+  $path = drupal_get_path('module', $mod);
+  $d = date('y/n/j');
+  $log_path = $path.'/logs/'.$d;
+  
+  return $log_path;
+}
+
+/*
+ *  Create log dir
+ */
+function ubc_dev_logs_create_log_dir($log_path) {
+  mkdir($log_path, 0777, true);
+}
+
+/*
+ *  Get path to logs 9 days ago
+ */
+function ubc_dev_logs_get_delete_log_path($mod, $deletePeriod=6) {
+
+  $path = drupal_get_path('module', $mod);
+  
+  $period = "-".$deletePeriod." days";
+  $week_ago = strtotime($period);
+  $d = date('y/n/j', $week_ago);
+  $log_path = $path.'/logs/'.$d;
+ 
+  return $log_path;
+}
+
+/*
+ * Delete an old log dir
+ */
+function ubc_dev_logs_delete_dir($dir) { 
+  $files = array_diff(scandir($dir), array('.','..')); 
+  foreach ($files as $file) { 
+    (is_dir("$dir/$file")) ? delTree("$dir/$file") : unlink("$dir/$file"); 
+  } 
+  
+  return rmdir($dir); 
+} 
+
+/*
+ * Create standard log line for a request
+ */
+function ubc_dev_logs_request_to_log($data, $type) {
+
+  if(is_object($data)) {
+    $data = (array)$data;
+  }
+  if(!is_array($data)) {
+    $data = array($data);
+  }
+  
+  set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    if($errno === E_RECOVERABLE_ERROR) {
+      throw new ErrorException($errstr, $errno, 0, $errfile, $errline);
+    }
+    return false;
+  });
+  try {
+    $data = implode("\t", $data);
+  } catch (Exception $e) {
+	$data = 'CANNOT LOG DATA';
+  }
+  restore_error_handler();
+  
+  return date('Y-m-d::H:i:s')."\t".strtoupper($type)."\t".$data."\n";
+}
+
+?>
